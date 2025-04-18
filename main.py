@@ -4,6 +4,8 @@ from scanner.modules.ssl_tls import SSLTLSModule
 from scanner.modules.cookies import CookieSecurityModule
 from scanner.modules.open_ports import PortScanningModule
 from scanner.modules.crawler import WebCrawlerModule
+from scanner.modules.dir_bruteforce import DirectoryBruteforceModule
+
 
 def main():
     domain = input("Enter domain to scan: ").strip()
@@ -15,8 +17,8 @@ def main():
     scanner.register_module(CookieSecurityModule())
     scanner.register_module(PortScanningModule())
     scanner.register_module(WebCrawlerModule())
+    scanner.register_module(DirectoryBruteforceModule())
 
-    # Run the scan
     scanner.run()
 
 if __name__ == "__main__":
