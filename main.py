@@ -6,7 +6,7 @@ from scanner.modules.open_ports import PortScanningModule
 from scanner.modules.crawler import WebCrawlerModule
 from scanner.modules.dir_bruteforce import DirectoryBruteforceModule
 from scanner.modules.xss_scanner import XSSScannerModule
-
+from scanner.modules.sql_injection_scanner import SQLInjectionScannerModule  
 
 def main():
     domain = input("Enter domain to scan: ").strip()
@@ -20,6 +20,7 @@ def main():
     scanner.register_module(WebCrawlerModule())
     scanner.register_module(DirectoryBruteforceModule())
     scanner.register_module(XSSScannerModule())
+    scanner.register_module(SQLInjectionScannerModule())  
 
     scanner.run()
 

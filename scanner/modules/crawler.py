@@ -13,7 +13,7 @@ class WebCrawlerModule:
         """
         Crawl the domain and collect internal links, filtered and clean.
         """
-        base_url = f"https://{domain}"
+        base_url = f"http://{domain}"
         to_visit = [base_url]
         findings = []
 

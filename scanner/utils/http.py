@@ -21,7 +21,7 @@ def fetch_headers(domain):
     """
     Fetch only HTTP headers from a domain.
     """
-    url = f"https://{domain}"
+    url = f"http://{domain}"
 
     try:
         response = session.get(url, timeout=60, allow_redirects=True)
@@ -34,7 +34,7 @@ def fetch_cookies(domain):
     """
     Fetch cookies from a domain.
     """
-    url = f"https://{domain}"
+    url = f"http://{domain}"
 
     try:
         response = session.get(url, timeout=60, allow_redirects=True)

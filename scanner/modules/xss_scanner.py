@@ -59,7 +59,6 @@ class XSSScannerModule:
         soup = BeautifulSoup(response.text, "html.parser")
         forms = soup.find_all("form")
 
-        print(f"Forms found in {url}: {len(forms)}")
 
         for form in forms:
             action = form.get("action")
@@ -82,8 +81,6 @@ class XSSScannerModule:
                     params = "&".join([f"{name}={payload}" for name in input_names])
                     test_url = f"{form_url}?{params}"
                     test_response = fetch_url(test_url)
-
-                print(f"Testing Form URL: {form_url} with method {method.upper()}")
 
                 if test_response and payload in test_response.text:
                     findings[form_url] = "Potential form-based XSS vulnerability detected!"

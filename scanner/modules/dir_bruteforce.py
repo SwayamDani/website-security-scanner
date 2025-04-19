@@ -11,7 +11,7 @@ class DirectoryBruteforceModule:
         ]
 
     def run_test(self, domain):
-        base_url = f"https://{domain}"
+        base_url = f"http://{domain}"
         findings = {}
 
         try:
