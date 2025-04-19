@@ -45,7 +45,7 @@ def generate_report(domain, results):
                 else:
                     value_str = str(value).lower()
 
-                    if any(kw in value_str for kw in ["vulnerability", "potential", "detected", "error"]) and not value_str.startswith("no obvious"):
+                    if any(kw in value_str for kw in ["vulnerability", "potential", "detected", "error", "csrf"]) and not value_str.startswith("no obvious"):
                         print(f"  ❌ {Fore.RED}{key}: {value}{Style.RESET_ALL}")
                         module_error = True
                         critical_findings += 1

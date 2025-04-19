@@ -8,6 +8,7 @@ from scanner.modules.dir_bruteforce import DirectoryBruteforceModule
 from scanner.modules.xss_scanner import XSSScannerModule
 from scanner.modules.sql_injection_scanner import SQLInjectionScannerModule
 from scanner.modules.open_redirect_scanner import OpenRedirectScannerModule  
+from scanner.modules.csrf_scanner import CSRFScannerModule
 
 def main():
     domain = input("Enter domain to scan: ").strip()
@@ -23,6 +24,7 @@ def main():
     scanner.register_module(XSSScannerModule())
     scanner.register_module(SQLInjectionScannerModule())  
     scanner.register_module(OpenRedirectScannerModule())
+    scanner.register_module(CSRFScannerModule())
 
     scanner.run()
 
