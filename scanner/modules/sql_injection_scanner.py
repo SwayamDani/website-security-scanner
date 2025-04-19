@@ -1,17 +1,12 @@
 import re
-from urllib.parse import urljoin
-from bs4 import BeautifulSoup  # ADD THIS
+import time
+import random
+import string
+from urllib.parse import urlparse, urljoin, parse_qs, urlencode
 from scanner.utils.http import fetch_url
 
 class SQLInjectionScannerModule:
     def __init__(self):
-        self.payloads = [
-            "' OR '1'='1",
-            "'; DROP TABLE users; --",
-            "' UNION SELECT NULL, NULL, NULL --",
-            "' OR 1=1 --",
-            "\" OR \"\" = \""
-        ]
         self.error_signatures = [
             "SQL syntax.*MySQL",
             "Warning.*mysql_",
@@ -28,45 +23,49 @@ class SQLInjectionScannerModule:
             "Fatal error",
             "OperationalError"
         ]
+        self.time_delay = 5  # seconds for time-based testing
 
     def run_test(self, domain, crawled_links):
         findings = {}
 
-        # Only test links ending in .php
         php_links = [link for link in crawled_links if link.endswith(".php")]
         param_links = []
 
-        # Crawl each .php page again to find links with parameters
         for link in php_links:
             response = fetch_url(link)
             if not response:
                 continue
 
-            # 1. Extract GET links
             found_links = re.findall(r'href=["\'](.*?\.php\?.*?)["\']', response.text, re.IGNORECASE)
             for found in found_links:
                 full_url = urljoin(link, found)
                 param_links.append(full_url)
 
-            # 2. Test forms on this page
-            form_findings = self.test_forms(link)
-            findings.update(form_findings)
-
         print(f"Param Links for SQLi: {param_links}")
 
-        # Test GET param links
         for link in param_links:
-            for payload in self.payloads:
-                test_url = self.inject_payload(link, payload)
-                test_response = fetch_url(test_url)
+            normal_response = fetch_url(link)
+            if not normal_response:
+                continue
 
-                print(f"Testing URL (GET): {test_url}")
+            print(f"Testing URL (GET): {link}")
 
-                if not test_response:
-                    continue
+            # 1. Error-Based Detection
+            error_based = self.error_based_sqli(link)
+            if error_based:
+                findings.update(error_based)
+                continue  # skip others if already vulnerable
 
-                if self.detect_sqli(test_response, test_url, findings):
-                    break
+            # 2. Time-Based Detection
+            time_based = self.time_based_sqli(link)
+            if time_based:
+                findings.update(time_based)
+                continue
+
+            # 3. Boolean-Based Detection
+            boolean_based = self.boolean_based_sqli(link)
+            if boolean_based:
+                findings.update(boolean_based)
 
         if not findings:
             findings["Info"] = "No obvious SQL Injection vulnerabilities found."
@@ -76,66 +75,71 @@ class SQLInjectionScannerModule:
             "findings": findings
         }
 
-    def test_forms(self, page_url):
-        """
-        Find forms on page and inject SQLi into POST parameters.
-        """
-        findings = {}
-        response = fetch_url(page_url)
-        if not response:
-            return findings
+    def error_based_sqli(self, url):
+        payloads = [
+            "' OR '1'='1",
+            "'; DROP TABLE users; --",
+            "' UNION SELECT NULL, NULL, NULL --",
+            "' OR 1=1 --",
+            "\" OR \"\" = \""
+        ]
 
-        soup = BeautifulSoup(response.text, "html.parser")
-        forms = soup.find_all("form")
+        for payload in payloads:
+            test_url = self.inject_payload(url, payload)
+            response = fetch_url(test_url)
 
-        print(f"Forms found in {page_url}: {len(forms)}")
-
-        for form in forms:
-            action = form.get("action")
-            form_url = urljoin(page_url, action) if action else page_url
-            method = form.get("method", "get").lower()
-
-            if method != "post":
-                continue  # Only scan POST forms
-
-            inputs = form.find_all(["input", "textarea"])
-            input_names = [input_.get("name") for input_ in inputs if input_.get("name")]
-
-            if not input_names:
+            if not response:
                 continue
 
-            for payload in self.payloads:
-                data = {name: payload for name in input_names}
-                test_response = fetch_url(form_url, method="post", data=data)
+            if response.status_code in [500, 400]:
+                return {test_url: f"Potential SQL Injection vulnerability! (HTTP {response.status_code})"}
 
-                print(f"Testing Form URL (POST): {form_url}")
+            for signature in self.error_signatures:
+                if re.search(signature, response.text, re.IGNORECASE):
+                    return {test_url: f"Potential SQL Injection vulnerability detected (signature: {signature})"}
 
-                if not test_response:
-                    continue
+        return None
 
-                if self.detect_sqli(test_response, form_url, findings):
-                    break  # Stop after one finding
+    def time_based_sqli(self, url):
+        # Inject sleep payload
+        delay_payload = "' OR SLEEP(5)-- "
+        test_url = self.inject_payload(url, delay_payload)
 
-        return findings
+        start_time = time.time()
+        response = fetch_url(test_url)
+        end_time = time.time()
 
-    def detect_sqli(self, response, url, findings):
-        """
-        Analyze response for SQL errors.
-        """
-        if response.status_code in [500, 400]:
-            findings[url] = f"Potential SQL Injection vulnerability! (HTTP {response.status_code})"
-            return True
+        if not response:
+            return None
 
-        for signature in self.error_signatures:
-            if re.search(signature, response.text, re.IGNORECASE):
-                findings[url] = f"Potential SQL Injection vulnerability detected (signature: {signature})"
-                return True
+        elapsed = end_time - start_time
 
-        return False
+        if elapsed > self.time_delay - 1:
+            return {test_url: "Potential Time-Based Blind SQL Injection vulnerability (delay observed)"}
+
+        return None
+
+    def boolean_based_sqli(self, url):
+        true_payload = "' OR 1=1-- "
+        false_payload = "' OR 1=2-- "
+
+        true_url = self.inject_payload(url, true_payload)
+        false_url = self.inject_payload(url, false_payload)
+
+        true_response = fetch_url(true_url)
+        false_response = fetch_url(false_url)
+
+        if not true_response or not false_response:
+            return None
+
+        if len(true_response.text) != len(false_response.text):
+            return {true_url: "Potential Boolean-Based Blind SQL Injection vulnerability (response length mismatch)"}
+
+        return None
 
     def inject_payload(self, url, payload):
         """
-        Injects SQL payload into the first parameter.
+        Inject SQL payload into the first parameter.
         """
         if "?" not in url:
             return url
@@ -144,7 +148,6 @@ class SQLInjectionScannerModule:
         param_parts = params.split("&")
         first_param = param_parts[0].split("=")[0]
 
-        # Inject payload into first param
         new_param = f"{first_param}={payload}"
         new_params = "&".join([new_param] + param_parts[1:])
 
