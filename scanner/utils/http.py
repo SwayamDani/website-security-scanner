@@ -3,6 +3,7 @@
 import requests
 import random
 import time
+import httpx
 
 # Common headers to look like a real browser
 BROWSER_HEADERS = {
@@ -43,16 +44,13 @@ def fetch_cookies(domain):
         print(f"Error fetching cookies: {e}")
         return None
 
-def fetch_url(url, method="get", data=None, timeout=8, allow_redirects=True):
-    """
-    Fetch a URL using GET or POST.
-    """
+def fetch_url(url, method="GET", data=None, params=None, allow_redirects=True):
     try:
-        if method.lower() == "post":
-            response = requests.post(url, data=data, headers=BROWSER_HEADERS, timeout=timeout, allow_redirects=allow_redirects)
-        else:
-            response = requests.get(url, headers=BROWSER_HEADERS, timeout=timeout, allow_redirects=allow_redirects)
-        return response
-    except requests.RequestException as e:
-        print(f"Error fetching {url}: {e}")
+        with httpx.Client(follow_redirects=allow_redirects, timeout=10) as client:
+            if method.upper() == "POST":
+                response = client.post(url, data=data)
+            else:
+                response = client.get(url, params=params)
+            return response
+    except Exception:
         return None
