@@ -1,6 +1,7 @@
 import logging
 from scanner.utils.reporting import generate_report
 from scanner.modules.sql_injection_scanner import SQLInjectionScannerModule  
+from scanner.modules.open_redirect_scanner import OpenRedirectScannerModule
 
 class Scanner:
     def __init__(self, domain):
@@ -40,8 +41,8 @@ class Scanner:
                 elif module.__class__.__name__ == "XSSScannerModule":
                     result = module.run_test(self.domain, crawler_links)
                     self.results.append(result)
-                
-                elif isinstance(module, SQLInjectionScannerModule):
+
+                elif isinstance(module, (SQLInjectionScannerModule, OpenRedirectScannerModule)):
                     result = module.run_test(self.domain, crawler_links)
                     self.results.append(result)
 

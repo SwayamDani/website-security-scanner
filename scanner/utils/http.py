@@ -43,15 +43,15 @@ def fetch_cookies(domain):
         print(f"Error fetching cookies: {e}")
         return None
 
-def fetch_url(url, method="get", data=None, timeout=8):
+def fetch_url(url, method="get", data=None, timeout=8, allow_redirects=True):
     """
     Fetch a URL using GET or POST.
     """
     try:
         if method.lower() == "post":
-            response = requests.post(url, data=data, headers=BROWSER_HEADERS, timeout=timeout)
+            response = requests.post(url, data=data, headers=BROWSER_HEADERS, timeout=timeout, allow_redirects=allow_redirects)
         else:
-            response = requests.get(url, headers=BROWSER_HEADERS, timeout=timeout)
+            response = requests.get(url, headers=BROWSER_HEADERS, timeout=timeout, allow_redirects=allow_redirects)
         return response
     except requests.RequestException as e:
         print(f"Error fetching {url}: {e}")
