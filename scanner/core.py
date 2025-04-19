@@ -24,11 +24,26 @@ class Scanner:
         """
         self.logger.info("Starting scan...")
 
+        crawler_links = []
+
         for module in self.modules:
             self.logger.info(f"Running module: {module.__class__.__name__}")
             try:
-                result = module.run_test(self.domain)
-                self.results.append(result)
+                if module.__class__.__name__ == "WebCrawlerModule":
+                    result = module.run_test(self.domain)
+                    self.results.append(result)
+
+                    # Save links discovered for later use
+                    crawler_links = result.get("findings", {}).get("Discovered Links", [])
+
+                elif module.__class__.__name__ == "XSSScannerModule":
+                    result = module.run_test(self.domain, crawler_links)
+                    self.results.append(result)
+
+                else:
+                    result = module.run_test(self.domain)
+                    self.results.append(result)
+
             except Exception as e:
                 self.logger.error(f"Module {module.__class__.__name__} failed: {e}")
 

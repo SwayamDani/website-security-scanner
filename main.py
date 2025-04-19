@@ -5,6 +5,7 @@ from scanner.modules.cookies import CookieSecurityModule
 from scanner.modules.open_ports import PortScanningModule
 from scanner.modules.crawler import WebCrawlerModule
 from scanner.modules.dir_bruteforce import DirectoryBruteforceModule
+from scanner.modules.xss_scanner import XSSScannerModule
 
 
 def main():
@@ -18,6 +19,7 @@ def main():
     scanner.register_module(PortScanningModule())
     scanner.register_module(WebCrawlerModule())
     scanner.register_module(DirectoryBruteforceModule())
+    scanner.register_module(XSSScannerModule())
 
     scanner.run()
 

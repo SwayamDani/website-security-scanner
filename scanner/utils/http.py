@@ -43,15 +43,16 @@ def fetch_cookies(domain):
         print(f"Error fetching cookies: {e}")
         return None
 
-def fetch_url(url, timeout=5):
+def fetch_url(url, method="get", data=None, timeout=8):
     """
-    Standard GET request with browser-like headers, session, and polite sleep.
+    Fetch a URL using GET or POST.
     """
     try:
-        # Polite random sleep between 1 and 2.5 seconds
-        time.sleep(random.uniform(1.0, 2.5))
-
-        response = session.get(url, timeout=timeout, allow_redirects=True)
+        if method.lower() == "post":
+            response = requests.post(url, data=data, headers=BROWSER_HEADERS, timeout=timeout)
+        else:
+            response = requests.get(url, headers=BROWSER_HEADERS, timeout=timeout)
         return response
-    except requests.RequestException:
+    except requests.RequestException as e:
+        print(f"Error fetching {url}: {e}")
         return None
