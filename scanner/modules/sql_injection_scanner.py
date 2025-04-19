@@ -1,5 +1,6 @@
 import re
 from urllib.parse import urljoin
+from bs4 import BeautifulSoup  # ADD THIS
 from scanner.utils.http import fetch_url
 
 class SQLInjectionScannerModule:
@@ -41,35 +42,30 @@ class SQLInjectionScannerModule:
             if not response:
                 continue
 
+            # 1. Extract GET links
             found_links = re.findall(r'href=["\'](.*?\.php\?.*?)["\']', response.text, re.IGNORECASE)
             for found in found_links:
                 full_url = urljoin(link, found)
                 param_links.append(full_url)
 
+            # 2. Test forms on this page
+            form_findings = self.test_forms(link)
+            findings.update(form_findings)
+
         print(f"Param Links for SQLi: {param_links}")
 
+        # Test GET param links
         for link in param_links:
             for payload in self.payloads:
                 test_url = self.inject_payload(link, payload)
                 test_response = fetch_url(test_url)
 
-                print(f"Testing URL: {test_url}")
+                print(f"Testing URL (GET): {test_url}")
 
                 if not test_response:
                     continue
 
-                # 1. Check for server errors (500/400)
-                if test_response.status_code in [500, 400]:
-                    findings[test_url] = f"Potential SQL Injection vulnerability! (HTTP {test_response.status_code})"
-                    break
-
-                # 2. Check for SQL error messages inside response body
-                for signature in self.error_signatures:
-                    if re.search(signature, test_response.text, re.IGNORECASE):
-                        findings[test_url] = f"Potential SQL Injection vulnerability detected (signature: {signature})"
-                        break
-
-                if test_url in findings:
+                if self.detect_sqli(test_response, test_url, findings):
                     break
 
         if not findings:
@@ -79,6 +75,63 @@ class SQLInjectionScannerModule:
             "module": "SQL Injection Scanner",
             "findings": findings
         }
+
+    def test_forms(self, page_url):
+        """
+        Find forms on page and inject SQLi into POST parameters.
+        """
+        findings = {}
+        response = fetch_url(page_url)
+        if not response:
+            return findings
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        forms = soup.find_all("form")
+
+        print(f"Forms found in {page_url}: {len(forms)}")
+
+        for form in forms:
+            action = form.get("action")
+            form_url = urljoin(page_url, action) if action else page_url
+            method = form.get("method", "get").lower()
+
+            if method != "post":
+                continue  # Only scan POST forms
+
+            inputs = form.find_all(["input", "textarea"])
+            input_names = [input_.get("name") for input_ in inputs if input_.get("name")]
+
+            if not input_names:
+                continue
+
+            for payload in self.payloads:
+                data = {name: payload for name in input_names}
+                test_response = fetch_url(form_url, method="post", data=data)
+
+                print(f"Testing Form URL (POST): {form_url}")
+
+                if not test_response:
+                    continue
+
+                if self.detect_sqli(test_response, form_url, findings):
+                    break  # Stop after one finding
+
+        return findings
+
+    def detect_sqli(self, response, url, findings):
+        """
+        Analyze response for SQL errors.
+        """
+        if response.status_code in [500, 400]:
+            findings[url] = f"Potential SQL Injection vulnerability! (HTTP {response.status_code})"
+            return True
+
+        for signature in self.error_signatures:
+            if re.search(signature, response.text, re.IGNORECASE):
+                findings[url] = f"Potential SQL Injection vulnerability detected (signature: {signature})"
+                return True
+
+        return False
 
     def inject_payload(self, url, payload):
         """

@@ -20,6 +20,7 @@ def generate_report(domain, results):
     passed = 0
     warnings = 0
     errors = 0
+    critical_vulns = 0  # <- track number of critical vulnerabilities
 
     for result in results:
         module_name = result.get('module')
@@ -27,11 +28,13 @@ def generate_report(domain, results):
 
         findings = result.get('findings')
         if findings:
+            module_error = False
             module_warning = False
 
             for key, value in findings.items():
+                value_lower = str(value).lower()
+
                 if isinstance(value, dict):
-                    # Nested findings (e.g., cookie flags, port services)
                     print(f"  {Fore.YELLOW}{key}:{Style.RESET_ALL}")
                     for subkey, subvalue in value.items():
                         color = Fore.GREEN if subvalue in [True, 'Strict', 'SAMEORIGIN', 'Lax'] else Fore.RED
@@ -40,13 +43,20 @@ def generate_report(domain, results):
                         if color == Fore.RED:
                             module_warning = True
                 else:
-                    if value == "Missing":
+                    # 🔥 Detect real vulnerabilities
+                    if any(keyword in value_lower for keyword in ["sql injection", "xss", "cross-site scripting", "idor", "critical", "vulnerability detected"]):
+                        print(f"  {Fore.RED}{key}: {value}{Style.RESET_ALL}")
+                        module_error = True
+                        critical_vulns += 1  # critical vulns add up individually
+                    elif "missing" in value_lower or "warning" in value_lower:
                         print(f"  {Fore.YELLOW}{key}: {value}{Style.RESET_ALL}")
                         module_warning = True
                     else:
                         print(f"  {Fore.GREEN}{key}: {value}{Style.RESET_ALL}")
 
-            if module_warning:
+            if module_error:
+                errors += 1
+            elif module_warning:
                 warnings += 1
             else:
                 passed += 1
@@ -66,12 +76,15 @@ def generate_report(domain, results):
     print(f"{Fore.GREEN}Passed: {passed}{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}Warnings: {warnings}{Style.RESET_ALL}")
     print(f"{Fore.RED}Errors: {errors}{Style.RESET_ALL}")
+    print(f"{Fore.RED}Critical Vulnerabilities: {critical_vulns}{Style.RESET_ALL}")
 
     # --- Security Score Calculation ---
     security_score = 100
+    security_score += passed * 5
     security_score -= warnings * 10
     security_score -= errors * 20
-    security_score = max(0, security_score)  # Prevent score below 0
+    security_score -= critical_vulns * 30  # 🔥 very important: penalty PER CRITICAL
+    security_score = max(0, min(security_score, 100))  # Bound between 0 and 100
 
     if security_score >= 90:
         grade = "A"
@@ -97,6 +110,7 @@ def generate_report(domain, results):
             "passed": passed,
             "warnings": warnings,
             "errors": errors,
+            "critical_vulnerabilities": critical_vulns,
             "security_score": security_score,
             "grade": grade
         }

@@ -19,8 +19,6 @@ class DirectoryBruteforceModule:
                 url = f"{base_url}/{word}"
 
                 response = fetch_url(url)
-                print(f"Testing URL: {url}")
-
                 if response and response.status_code in [200, 301, 403]:
                     findings[url] = f"Status {response.status_code}"
 
